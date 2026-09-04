@@ -3,7 +3,7 @@ import type {
   TranscriptEvent,
   VoiceSessionConfig,
   VoiceSessionState,
-} from "@voice-input-layer/contracts";
+} from "@sayrr/contracts";
 
 export interface VoiceSessionSnapshot {
   id: string;
