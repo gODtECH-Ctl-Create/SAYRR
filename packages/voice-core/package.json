@@ -1,0 +1,12 @@
+{
+  "name": "@voice-input-layer/voice-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@voice-input-layer/contracts": "workspace:*"
+  }
+}
