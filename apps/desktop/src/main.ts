@@ -35,7 +35,7 @@ app.innerHTML = `
       <button id="insert" class="secondary" disabled>Insert</button>
     </div>
 
-    <footer><span id="provider">Speech provider: browser prototype</span><span id="target">Text target: not checked</span></footer>
+    <footer><span id="provider">Speech provider: browser prototype</span><span id="target">Target: preserved on insert</span></footer>
   </main>
 `;
 
@@ -120,7 +120,7 @@ function startListening(): void {
     const text = (document.querySelector("#transcript")!.textContent ?? "").trim();
     if (text && text !== "Your transcript will appear here.") {
       state.finalText = text;
-      setStatus("Text ready.", "Insert it into the active app or keep editing here.");
+      setStatus("Text ready.", "Insert it into the application you were using before SAYRR opened.");
     }
   };
 
@@ -132,14 +132,23 @@ async function insertText(): Promise<void> {
   const text = state.finalText || (document.querySelector("#transcript")!.textContent ?? "").trim();
   if (!text || text === "Your transcript will appear here.") return;
 
+  const win = getCurrentWindow();
+  await win.hide();
+  await new Promise((resolve) => window.setTimeout(resolve, 120));
+
   await writeText(text);
   try {
     await invoke("paste_text");
-    setStatus("Inserted.", "SAYRR placed the text into the active application.");
   } catch (error) {
-    setStatus("Copied to clipboard.", "Direct insertion was unavailable. Paste with Ctrl/Cmd+V.");
     console.error(error);
+    await win.show();
+    await win.setFocus();
+    setStatus("Copied to clipboard.", "Direct insertion was unavailable. Paste with Ctrl/Cmd+V.");
+    return;
   }
+
+  state.finalText = "";
+  setTranscript("", true);
 }
 
 async function registerGlobalShortcut(): Promise<void> {
@@ -160,7 +169,7 @@ document.querySelector("#listen")!.addEventListener("click", () => {
 document.querySelector("#demo")!.addEventListener("click", () => {
   state.finalText = SAMPLE_TEXT;
   setTranscript(SAMPLE_TEXT);
-  setStatus("Text ready.", "This demo path validates cleanup, clipboard, and insertion plumbing.");
+  setStatus("Text ready.", "Insert hides SAYRR, restores the previous app, then pastes the text.");
 });
 
 document.querySelector("#insert")!.addEventListener("click", () => {
@@ -168,6 +177,7 @@ document.querySelector("#insert")!.addEventListener("click", () => {
 });
 
 document.querySelector("#close")!.addEventListener("click", () => {
+  stopRecognition();
   void getCurrentWindow().hide();
 });
 
@@ -175,7 +185,7 @@ void listen("sayrr-target-status", (event) => {
   const detail = event.payload as { application?: string; supported: boolean };
   document.querySelector("#target")!.textContent = detail.supported
     ? `Target: ${detail.application ?? "supported"}`
-    : "Text target: fallback mode";
+    : "Target: fallback mode";
 });
 
 void registerGlobalShortcut().catch((error) => {
