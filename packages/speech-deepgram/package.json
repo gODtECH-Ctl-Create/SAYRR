@@ -1,0 +1,13 @@
+{
+  "name": "@sayrr/speech-deepgram",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sayrr/contracts": "workspace:*",
+    "@sayrr/voice-core": "workspace:*"
+  }
+}
