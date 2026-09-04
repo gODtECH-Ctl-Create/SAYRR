@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+.next/
+dist/
+build/
+
+# environment
+.env
+.env.*
+!.env.example
+
+# native/mobile
+android/.gradle/
+android/build/
+android/app/build/
+ios/Pods/
+ios/build/
+
+# tooling
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# local data
+coverage/
+.tmp/
