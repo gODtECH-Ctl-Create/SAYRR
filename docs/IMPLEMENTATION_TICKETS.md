@@ -1,44 +1,45 @@
-# V1 Implementation Tickets
+# SAYRR implementation tickets
 
-These tickets are the first engineering slices derived from the architecture documents.
+## Phase 1 — Desktop foundation
 
-## P0 — Core
+1. Desktop shell: Tauri 2.x resident application with a compact voice launcher.
+2. Global activation: register a configurable global shortcut.
+3. Voice capture: microphone permission, start/stop/cancel lifecycle, and audio session state.
+4. Speech provider: implement a provider adapter with streaming transcript events and explicit provider errors.
+5. Cleanup: apply deterministic local cleanup first, with a replaceable AI cleanup provider behind a shared contract.
+6. Text target: detect or select the active desktop text target where supported.
+7. Text insertion: insert text using native target APIs where available, with clipboard and keyboard fallback.
+8. End-to-end smoke test: focus a text field, activate SAYRR, speak, clean, insert, and record telemetry.
 
-- Speech provider spike and benchmark
-- Voice session gateway
-- Transcript normalizer
-- Vocabulary resolver
-- Cleanup engine
-- Web voice test harness
+## Phase 1 completion gate
 
-## P0 — Desktop
+The phase is complete when a desktop build can execute the core flow reliably in a controlled test matrix:
 
-- macOS text-target spike
-- Windows text-target spike
-- Tauri tray/shortcut shell
-- Floating launcher
-- Insertion fallback chain
+```text
+Focus text field -> activate -> capture speech -> transcript -> cleanup -> insert
+```
 
-## P0 — Mobile
+The first supported validation targets are browser text fields and common Chromium-based applications. Unsupported targets must fail gracefully rather than silently losing text.
 
-- Android Input Method Editor prototype
-- Android insertion integration
-- iOS custom keyboard prototype
-- iOS text document proxy integration
-- Full Access onboarding
+## Phase 2 — Android keyboard
 
-## P1 — Account and data
+- Android Input Method Editor (IME) shell
+- Voice action inside keyboard
+- Shared transcription and cleanup contracts
+- Personal vocabulary
+- Preferences and history
 
-- Supabase schema migrations
-- Authentication
-- Vocabulary UI
-- History UI
-- Preferences UI
-- Usage event pipeline
+## Phase 3 — iOS keyboard
 
-## P1 — Quality
+- Custom keyboard extension
+- Keyboard-safe networking model
+- Voice capture and insertion
+- Companion app synchronization
 
-- Automated core state-machine tests
-- Provider benchmark runner
-- Cross-application insertion test harness
-- Error/fallback test coverage
+## Phase 4 — Intelligence
+
+- Nigerian English improvements
+- Personal style
+- Intent commands
+- Context-aware rewriting
+- Actions and integrations
