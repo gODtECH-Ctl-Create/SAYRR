@@ -1,4 +1,4 @@
-import type { VoiceSessionConfig } from "@voice-input-layer/contracts";
+import type { VoiceSessionConfig } from "@sayrr/contracts";
 
 export interface SpeechProvider {
   readonly id: string;
