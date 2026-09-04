@@ -1,27 +1,34 @@
-# Voice Input Layer
+# SAYRR
 
-**Working title:** Voice Input Layer
+**Speak anywhere you type.**
 
-A voice-first input system designed to let people speak wherever they normally type.
+SAYRR is a voice-first input layer designed to turn natural speech into clean text and place it directly into the text field the user is working in.
 
-> **Speak anywhere you type. Get clean text. Insert it where you are.**
+## V1
 
-This repository is being repurposed from the old Proqurement prototype. The previous procurement stub is no longer the product direction.
-
-## Product direction
-
-The product has two primary surfaces:
-
-- **Mobile:** a system keyboard/input method that users can select like any other keyboard. The keyboard exposes the product's enhanced voice input experience inside normal text fields.
-- **Desktop:** a lightweight resident application that provides a global activation shortcut and a floating voice launcher around the active text area where the operating system allows reliable detection.
-
-The first release focuses on one loop:
+V1 focuses on one interaction:
 
 ```text
-Focus a text field -> activate voice -> speak -> transcribe -> clean -> insert
+Focus a text field -> activate SAYRR -> speak -> transcribe -> clean -> insert
 ```
 
-The longer-term vision can evolve toward intelligent voice commands and actions, but V1 is a voice-input product first.
+### Mobile
+
+SAYRR is designed to become a selectable system keyboard/input method. The voice experience lives inside the keyboard rather than as a floating overlay.
+
+- Android Input Method Editor (IME)
+- iOS/iPadOS custom keyboard extension
+- Enhanced speech input, punctuation, cleanup, and personal vocabulary
+
+### Desktop
+
+SAYRR is a lightweight resident application with:
+
+- Global activation shortcut
+- Floating voice launcher where the operating system can reliably identify the active text target
+- Streaming transcription
+- AI cleanup
+- Native text insertion with clipboard/keyboard fallback
 
 ## Repository structure
 
@@ -30,15 +37,28 @@ docs/
   PRODUCT_SPECIFICATION.md
   ARCHITECTURE.md
   PLATFORM_ARCHITECTURE.md
-  ROADMAP.md
+  DATA_MODEL.md
+  API_CONTRACT.md
   PRIVACY_SECURITY.md
+  ROADMAP.md
+  TEST_MATRIX.md
+  PROVIDER_EVALUATION.md
+  BETA_PLAN.md
+  RELEASE_CHECKLIST.md
   adr/
-    001-platform-strategy.md
 
-apps/               # application surfaces added during implementation
-packages/           # shared TypeScript contracts and client libraries
-native/             # platform-specific native integration where required
-supabase/           # database migrations and server-side functions
+apps/
+  desktop/
+
+packages/
+  contracts/
+  voice-core/
+
+native/
+  # OS-specific native integration added as platform clients mature
+
+supabase/
+  # Database migrations and server-side functions
 ```
 
 ## Core architecture
@@ -50,9 +70,9 @@ supabase/           # database migrations and server-side functions
             |                           |
          MOBILE                      DESKTOP
             |                           |
-     System Keyboard             Resident App
-     Android IME                  Tray/Menu Bar
-     iOS Keyboard                Global Shortcut
+      SAYRR Keyboard              SAYRR Desktop
+      Android IME                 Tray/Menu Bar
+      iOS Keyboard               Global Shortcut
             |                           |
             +-------------+-------------+
                           |
@@ -60,47 +80,43 @@ supabase/           # database migrations and server-side functions
                           |
                  Speech Provider API
                           |
-                   Raw Transcript
+                    Raw Transcript
                           |
                  Vocabulary Context
                           |
                   AI Cleanup Layer
                           |
-                    Final Text
+                     Final Text
                           |
                     Text Insertion
                           |
-                Current Text Field
+                   Current Text Field
 ```
 
 ## Technical direction
 
 - TypeScript for shared contracts and web-facing application logic.
 - Tauri 2.x for the desktop application shell and native bridge layer.
-- Rust for desktop system integration where JavaScript cannot safely or reliably access operating-system APIs.
-- Native Kotlin/Java components for Android Input Method Editor integration.
-- Native Swift components for iOS keyboard extension integration.
-- Supabase PostgreSQL for account, vocabulary, preferences, history, and usage metadata.
-- Vercel for the supporting web application and API services where appropriate.
-- A provider abstraction around speech recognition so the transcription backend can change without changing the client contract.
+- Rust for operating-system integration where web code cannot reliably access native APIs.
+- Native Kotlin/Java for Android Input Method Editor integration.
+- Native Swift for iOS keyboard extension integration.
+- Supabase PostgreSQL for accounts, vocabulary, preferences, history, and usage metadata.
+- Vercel for supporting web/API services where appropriate.
+- A speech-provider abstraction so the transcription backend can change without changing client contracts.
 
-## Development principles
+## Product principles
 
-1. Voice insertion is the core product, not a dashboard.
-2. Platform-native input mechanisms are preferred over simulated cross-platform behavior.
-3. Raw audio is not stored by default.
-4. User vocabulary must be first-class product data.
-5. AI cleanup must preserve meaning and avoid aggressive rewriting by default.
-6. Every platform must have an explicit fallback when direct text insertion is unsupported.
-7. Permissions and privacy are part of the product architecture, not post-release work.
-8. V1 should prove the core interaction before adding autonomous actions.
-
-## Documentation
-
-Start with `docs/PRODUCT_SPECIFICATION.md` for the product requirements, then read `docs/ARCHITECTURE.md` and `docs/PLATFORM_ARCHITECTURE.md` for the implementation model.
+1. Voice insertion is the core product, not the dashboard.
+2. Use platform-native input mechanisms instead of simulated cross-platform behavior.
+3. Do not store raw audio by default.
+4. Personal vocabulary is first-class product data.
+5. Cleanup preserves meaning and does not aggressively rewrite by default.
+6. Every platform has an explicit fallback when direct insertion is unavailable.
+7. Permissions and privacy are core architecture concerns.
+8. V1 proves the input experience before autonomous actions are added.
 
 ## Status
 
-**Foundation / architecture phase.**
+**Phase 1: Desktop foundation in progress.**
 
-The repository is intentionally being rebuilt around the voice-input product before implementation expands into the mobile and desktop clients.
+The repository was repurposed from the old procurement prototype and is now the home of SAYRR development.
