@@ -45,6 +45,9 @@ docs/
   PROVIDER_EVALUATION.md
   BETA_PLAN.md
   RELEASE_CHECKLIST.md
+  PHASE1_DESKTOP.md
+  PHASE1_IMPLEMENTATION.md
+  PHASE1_ACCEPTANCE.md
   adr/
 
 apps/
@@ -55,10 +58,8 @@ packages/
   voice-core/
 
 native/
-  # OS-specific native integration added as platform clients mature
 
 supabase/
-  # Database migrations and server-side functions
 ```
 
 ## Core architecture
