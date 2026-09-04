@@ -3,8 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { cleanupTranscript } from "@sayrr/cleanup";
+import type { SpeechProvider } from "@sayrr/voice-core";
+import { DeepgramFluxProviderFactory } from "@sayrr/speech-deepgram";
 
 import "./styles.css";
+import { startMicrophoneCapture, type AudioCaptureSession } from "./audio-capture";
 
 const SAMPLE_TEXT =
   "um, I’ll send the proposal tomorrow morning please remind me if I forget";
@@ -45,16 +48,29 @@ app.innerHTML = `
   </main>
 `;
 
-const state = {
+const state: {
+  listening: boolean;
+  finalText: string;
+  recognition: SpeechRecognition | null;
+  provider: SpeechProvider | null;
+  audio: AudioCaptureSession | null;
+  target: TargetSnapshot | null;
+} = {
   listening: false,
   finalText: "",
-  recognition: null as SpeechRecognition | null,
-  target: null as TargetSnapshot | null,
+  recognition: null,
+  provider: null,
+  audio: null,
+  target: null,
 };
 
 function setStatus(title: string, hint: string): void {
   document.querySelector("#status")!.textContent = title;
   document.querySelector("#hint")!.textContent = hint;
+}
+
+function setProviderLabel(value: string): void {
+  document.querySelector("#provider")!.textContent = `Speech provider: ${value}`;
 }
 
 function setTarget(snapshot: TargetSnapshot | null): void {
@@ -77,12 +93,22 @@ function setTranscript(text: string, placeholder = false): void {
   (document.querySelector("#insert") as HTMLButtonElement).disabled = !text;
 }
 
-function stopRecognition(): void {
+function setListeningUi(listening: boolean, label = listening ? "Listening…" : "Start listening"): void {
+  state.listening = listening;
+  document.querySelector("#listen-label")!.textContent = label;
+  document.querySelector("#listen")!.classList.toggle("active", listening);
+}
+
+function stopBrowserRecognition(): void {
   state.recognition?.stop();
   state.recognition = null;
-  state.listening = false;
-  document.querySelector("#listen-label")!.textContent = "Start listening";
-  document.querySelector("#listen")!.classList.remove("active");
+  setListeningUi(false);
+}
+
+async function stopAudioCapture(): Promise<void> {
+  const audio = state.audio;
+  state.audio = null;
+  if (audio) await audio.stop();
 }
 
 function clean(text: string): string {
@@ -92,27 +118,103 @@ function clean(text: string): string {
   }).text;
 }
 
-function startListening(): void {
-  const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+async function startDeepgramListening(): Promise<boolean> {
+  const tokenUrl = import.meta.env.VITE_SAYRR_SPEECH_TOKEN_URL;
+  if (!tokenUrl) return false;
 
+  setProviderLabel("Deepgram Flux");
+
+  const provider = new DeepgramFluxProviderFactory({
+    model: import.meta.env.VITE_SAYRR_SPEECH_MODEL ?? "flux-general-en",
+    sampleRate: 16000,
+    keyterms: ["SAYRR", "Supabase", "Vercel", "WhatsApp", "Slack", "Discord"],
+    tokenFactory: async () => {
+      const response = await fetch(tokenUrl, { credentials: "include", cache: "no-store" });
+      if (!response.ok) throw new Error(`Speech token request failed (${response.status})`);
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const data = (await response.json()) as { access_token?: string };
+        if (!data.access_token) throw new Error("Speech token response did not include access_token");
+        return data.access_token;
+      }
+      const token = (await response.text()).trim();
+      if (!token) throw new Error("Speech token response was empty");
+      return token;
+    },
+  }).create({
+    onPartial(text) {
+      setTranscript(clean(text), false);
+    },
+    onFinal(text) {
+      state.finalText = clean(text);
+      setTranscript(state.finalText, false);
+      setListeningUi(false);
+      setStatus("Text ready.", "Insert it into the application you were using before SAYRR opened.");
+      void stopAudioCapture();
+      provider.cancel();
+      state.provider = null;
+    },
+    onError(error) {
+      console.error(error);
+      setListeningUi(false);
+      void stopAudioCapture();
+      state.provider = null;
+      setStatus("Speech connection failed.", "Your text is not lost. Try again or use the demo path.");
+    },
+  });
+
+  state.provider = provider;
+
+  try {
+    await provider.start({
+      locale: navigator.language || "en-NG",
+      cleanupEnabled: true,
+      removeFillers: true,
+      autoPunctuation: true,
+    });
+
+    state.audio = await startMicrophoneCapture({
+      sampleRate: 16000,
+      onChunk(chunk) {
+        try {
+          provider.sendAudio(chunk);
+        } catch (error) {
+          console.error(error);
+        }
+      },
+    });
+
+    setListeningUi(true);
+    setStatus("Listening…", "Speak naturally. SAYRR is transcribing in real time.");
+    setTranscript("", true);
+    return true;
+  } catch (error) {
+    console.error(error);
+    provider.cancel();
+    state.provider = null;
+    await stopAudioCapture();
+    setStatus("Speech provider unavailable.", "Falling back to the local browser prototype.");
+    setProviderLabel("browser prototype");
+    return false;
+  }
+}
+
+function startBrowserListening(): void {
+  const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!Recognition) {
-    setStatus(
-      "Speech recognition unavailable.",
-      "Use Demo cleanup while the production speech provider is being connected.",
-    );
+    setStatus("Speech recognition unavailable.", "Use Demo cleanup while a speech provider is configured.");
     return;
   }
 
-  stopRecognition();
+  stopBrowserRecognition();
   const recognition = new Recognition();
   recognition.lang = navigator.language || "en-NG";
   recognition.interimResults = true;
   recognition.continuous = false;
 
   recognition.onstart = () => {
-    state.listening = true;
-    document.querySelector("#listen-label")!.textContent = "Listening…";
-    document.querySelector("#listen")!.classList.add("active");
+    setProviderLabel("browser prototype");
+    setListeningUi(true);
     setStatus("Listening…", "Speak naturally. SAYRR will prepare clean text.");
     setTranscript("", true);
   };
@@ -124,24 +226,17 @@ function startListening(): void {
     }
     const cleaned = clean(text);
     setTranscript(cleaned, false);
-    if (event.results[event.results.length - 1]?.isFinal) {
-      state.finalText = cleaned;
-    }
+    if (event.results[event.results.length - 1]?.isFinal) state.finalText = cleaned;
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-    stopRecognition();
-    setStatus(
-      "Couldn’t hear that.",
-      `Speech error: ${event.error}. Check microphone permission and try again.`,
-    );
+    stopBrowserRecognition();
+    setStatus("Couldn’t hear that.", `Speech error: ${event.error}. Check microphone permission and try again.`);
   };
 
   recognition.onend = () => {
-    state.listening = false;
     state.recognition = null;
-    document.querySelector("#listen-label")!.textContent = "Start listening";
-    document.querySelector("#listen")!.classList.remove("active");
+    setListeningUi(false);
     const text = (document.querySelector("#transcript")!.textContent ?? "").trim();
     if (text && text !== PLACEHOLDER) {
       state.finalText = text;
@@ -151,6 +246,21 @@ function startListening(): void {
 
   state.recognition = recognition;
   recognition.start();
+}
+
+async function startListening(): Promise<void> {
+  if (state.listening) return;
+  const usedProductionProvider = await startDeepgramListening();
+  if (!usedProductionProvider) startBrowserListening();
+}
+
+async function cancelListening(): Promise<void> {
+  stopBrowserRecognition();
+  if (state.provider) {
+    state.provider.cancel();
+    state.provider = null;
+  }
+  await stopAudioCapture();
 }
 
 async function captureTarget(): Promise<void> {
@@ -167,6 +277,7 @@ async function insertText(): Promise<void> {
   const text = state.finalText || (document.querySelector("#transcript")!.textContent ?? "").trim();
   if (!text || text === PLACEHOLDER) return;
 
+  await cancelListening();
   const win = getCurrentWindow();
   await win.hide();
   await new Promise((resolve) => window.setTimeout(resolve, 120));
@@ -174,25 +285,19 @@ async function insertText(): Promise<void> {
 
   try {
     await invoke("paste_text");
+    state.finalText = "";
+    setTranscript("", true);
   } catch (error) {
     console.error(error);
     await win.show();
     await win.setFocus();
     setStatus("Copied to clipboard.", "Direct insertion was unavailable. Paste with Ctrl/Cmd+V.");
-    return;
   }
-
-  state.finalText = "";
-  setTranscript("", true);
-  setStatus("Inserted.", "SAYRR placed the text into the captured target.");
 }
 
 async function activate(): Promise<void> {
   await captureTarget();
-  const win = getCurrentWindow();
-  await win.show();
-  await win.setFocus();
-  startListening();
+  await startListening();
 }
 
 async function registerGlobalShortcut(): Promise<void> {
@@ -204,12 +309,13 @@ async function registerGlobalShortcut(): Promise<void> {
 }
 
 document.querySelector("#listen")!.addEventListener("click", () => {
-  if (state.listening) stopRecognition();
-  else startListening();
+  if (state.listening) void cancelListening();
+  else void startListening();
 });
 
 document.querySelector("#demo")!.addEventListener("click", () => {
   state.finalText = clean(SAMPLE_TEXT);
+  setProviderLabel("deterministic demo");
   setTranscript(state.finalText);
   setStatus("Text ready.", "This demo validates cleanup before insertion.");
 });
@@ -219,8 +325,7 @@ document.querySelector("#insert")!.addEventListener("click", () => {
 });
 
 document.querySelector("#close")!.addEventListener("click", () => {
-  stopRecognition();
-  void getCurrentWindow().hide();
+  void cancelListening().finally(() => getCurrentWindow().hide());
 });
 
 void registerGlobalShortcut().catch((error) => {
