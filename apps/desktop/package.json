@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@sayrr/cleanup": "workspace:*",
+    "@sayrr/speech-deepgram": "workspace:*",
+    "@sayrr/voice-core": "workspace:*",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.0",
     "@tauri-apps/plugin-global-shortcut": "^2.3.1"
