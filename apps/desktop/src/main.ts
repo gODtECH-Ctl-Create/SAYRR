@@ -1,13 +1,19 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { invoke } from "@tauri-apps/api/core";
+import { cleanupTranscript } from "@sayrr/cleanup";
 
 import "./styles.css";
 
 const SAMPLE_TEXT =
-  "I’ll send the proposal tomorrow morning. Please remind me if I forget.";
+  "um, I’ll send the proposal tomorrow morning please remind me if I forget";
+const PLACEHOLDER = "Your transcript will appear here.";
+
+type TargetSnapshot = {
+  supported: boolean;
+  application?: string;
+};
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("SAYRR app root is missing");
@@ -26,16 +32,16 @@ app.innerHTML = `
     </section>
 
     <section class="transcript-wrap">
-      <div id="transcript" class="transcript placeholder">Your transcript will appear here.</div>
+      <div id="transcript" class="transcript placeholder">${PLACEHOLDER}</div>
     </section>
 
     <div class="actions">
       <button id="listen" class="primary"><span class="dot"></span><span id="listen-label">Start listening</span></button>
-      <button id="demo" class="secondary">Demo transcript</button>
+      <button id="demo" class="secondary">Demo cleanup</button>
       <button id="insert" class="secondary" disabled>Insert</button>
     </div>
 
-    <footer><span id="provider">Speech provider: browser prototype</span><span id="target">Target: preserved on insert</span></footer>
+    <footer><span id="provider">Speech provider: browser prototype</span><span id="target">Target: not captured yet</span></footer>
   </main>
 `;
 
@@ -43,6 +49,7 @@ const state = {
   listening: false,
   finalText: "",
   recognition: null as SpeechRecognition | null,
+  target: null as TargetSnapshot | null,
 };
 
 function setStatus(title: string, hint: string): void {
@@ -50,10 +57,23 @@ function setStatus(title: string, hint: string): void {
   document.querySelector("#hint")!.textContent = hint;
 }
 
+function setTarget(snapshot: TargetSnapshot | null): void {
+  state.target = snapshot;
+  const element = document.querySelector("#target")!;
+  if (!snapshot) {
+    element.textContent = "Target: not captured yet";
+    return;
+  }
+  element.textContent = snapshot.application
+    ? `Target: ${snapshot.application}`
+    : "Target: fallback mode";
+}
+
 function setTranscript(text: string, placeholder = false): void {
-  const el = document.querySelector<HTMLDivElement>("#transcript")!;
-  el.textContent = text || "Your transcript will appear here.";
-  el.classList.toggle("placeholder", placeholder || !text);
+  const element = document.querySelector<HTMLDivElement>("#transcript")!;
+  const value = text || PLACEHOLDER;
+  element.textContent = value;
+  element.classList.toggle("placeholder", placeholder || !text);
   (document.querySelector("#insert") as HTMLButtonElement).disabled = !text;
 }
 
@@ -66,18 +86,20 @@ function stopRecognition(): void {
 }
 
 function clean(text: string): string {
-  return text
-    .replace(/\s+/g, " ")
-    .replace(/\s+([,.!?])/g, "$1")
-    .trim()
-    .replace(/^\s*([a-z])/i, (_, c: string) => c.toUpperCase());
+  return cleanupTranscript(text, {
+    autoPunctuation: true,
+    removeFillers: true,
+  }).text;
 }
 
 function startListening(): void {
   const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
 
   if (!Recognition) {
-    setStatus("Speech recognition unavailable.", "Use Demo transcript while we connect the production speech provider.");
+    setStatus(
+      "Speech recognition unavailable.",
+      "Use Demo cleanup while the production speech provider is being connected.",
+    );
     return;
   }
 
@@ -97,8 +119,8 @@ function startListening(): void {
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
     let text = "";
-    for (let i = event.resultIndex; i < event.results.length; i += 1) {
-      text += event.results[i][0].transcript;
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      text += event.results[index][0].transcript;
     }
     const cleaned = clean(text);
     setTranscript(cleaned, false);
@@ -109,7 +131,10 @@ function startListening(): void {
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
     stopRecognition();
-    setStatus("Couldn’t hear that.", `Speech error: ${event.error}. Check microphone permission and try again.`);
+    setStatus(
+      "Couldn’t hear that.",
+      `Speech error: ${event.error}. Check microphone permission and try again.`,
+    );
   };
 
   recognition.onend = () => {
@@ -118,7 +143,7 @@ function startListening(): void {
     document.querySelector("#listen-label")!.textContent = "Start listening";
     document.querySelector("#listen")!.classList.remove("active");
     const text = (document.querySelector("#transcript")!.textContent ?? "").trim();
-    if (text && text !== "Your transcript will appear here.") {
+    if (text && text !== PLACEHOLDER) {
       state.finalText = text;
       setStatus("Text ready.", "Insert it into the application you were using before SAYRR opened.");
     }
@@ -128,15 +153,25 @@ function startListening(): void {
   recognition.start();
 }
 
+async function captureTarget(): Promise<void> {
+  try {
+    const target = await invoke<TargetSnapshot>("capture_active_target");
+    setTarget(target);
+  } catch (error) {
+    console.error("Unable to capture active target", error);
+    setTarget({ supported: false });
+  }
+}
+
 async function insertText(): Promise<void> {
   const text = state.finalText || (document.querySelector("#transcript")!.textContent ?? "").trim();
-  if (!text || text === "Your transcript will appear here.") return;
+  if (!text || text === PLACEHOLDER) return;
 
   const win = getCurrentWindow();
   await win.hide();
   await new Promise((resolve) => window.setTimeout(resolve, 120));
-
   await writeText(text);
+
   try {
     await invoke("paste_text");
   } catch (error) {
@@ -149,15 +184,22 @@ async function insertText(): Promise<void> {
 
   state.finalText = "";
   setTranscript("", true);
+  setStatus("Inserted.", "SAYRR placed the text into the captured target.");
+}
+
+async function activate(): Promise<void> {
+  await captureTarget();
+  const win = getCurrentWindow();
+  await win.show();
+  await win.setFocus();
+  startListening();
 }
 
 async function registerGlobalShortcut(): Promise<void> {
-  await unregister("CommandOrControl+Shift+Space").catch(() => undefined);
-  await register("CommandOrControl+Shift+Space", async () => {
-    const win = getCurrentWindow();
-    await win.show();
-    await win.setFocus();
-    startListening();
+  const shortcut = "CommandOrControl+Shift+Space";
+  await unregister(shortcut).catch(() => undefined);
+  await register(shortcut, () => {
+    void activate();
   });
 }
 
@@ -167,9 +209,9 @@ document.querySelector("#listen")!.addEventListener("click", () => {
 });
 
 document.querySelector("#demo")!.addEventListener("click", () => {
-  state.finalText = SAMPLE_TEXT;
-  setTranscript(SAMPLE_TEXT);
-  setStatus("Text ready.", "Insert hides SAYRR, restores the previous app, then pastes the text.");
+  state.finalText = clean(SAMPLE_TEXT);
+  setTranscript(state.finalText);
+  setStatus("Text ready.", "This demo validates cleanup before insertion.");
 });
 
 document.querySelector("#insert")!.addEventListener("click", () => {
@@ -179,13 +221,6 @@ document.querySelector("#insert")!.addEventListener("click", () => {
 document.querySelector("#close")!.addEventListener("click", () => {
   stopRecognition();
   void getCurrentWindow().hide();
-});
-
-void listen("sayrr-target-status", (event) => {
-  const detail = event.payload as { application?: string; supported: boolean };
-  document.querySelector("#target")!.textContent = detail.supported
-    ? `Target: ${detail.application ?? "supported"}`
-    : "Target: fallback mode";
 });
 
 void registerGlobalShortcut().catch((error) => {
