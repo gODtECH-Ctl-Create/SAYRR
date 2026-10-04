@@ -1,0 +1,9 @@
+project:
+  state: active
+  priority: high
+  current_focus: "Desktop voice-input foundation"
+  next_step: "Continue the desktop foundation and verify native insertion/provider contracts before expanding platform coverage"
+  blockers:
+    - []
+  status_note: "Voice insertion is the core product; privacy and native permission boundaries are architectural concerns."
+  last_worked_on: "2026-10-04"
